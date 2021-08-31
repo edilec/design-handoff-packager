@@ -1,0 +1,17 @@
+{
+  "name": "design-handoff-packager",
+  "version": "0.0.0",
+  "description": "Bundle component anatomy, states, tokens and usage notes for handoff.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/edilec/design-handoff-packager"
+  }
+}
