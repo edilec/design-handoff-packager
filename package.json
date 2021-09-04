@@ -1,17 +1,51 @@
 {
   "name": "design-handoff-packager",
-  "version": "0.0.0",
-  "description": "Bundle component anatomy, states, tokens and usage notes for handoff.",
+  "version": "0.1.0",
+  "description": "Check a design handoff plan for unresolved internal links and missing state evidence, and write a deterministic, portable handoff package.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "test": "node --test"
+    "lint": "for f in $(find bin src test -name '*.mjs'); do node --check \"$f\" || exit 1; done",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=src/**",
+    "example": "node bin/design-handoff-packager.mjs --root examples/clean --json",
+    "example:broken": "node bin/design-handoff-packager.mjs --root examples/broken --json > /dev/null; test $? -eq 1",
+    "pack:check": "npm pack --dry-run",
+    "check": "npm run lint && npm test && npm run example && npm run example:broken && npm run pack:check"
   },
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/edilec/design-handoff-packager"
-  }
+    "url": "git+https://github.com/edilec/design-handoff-packager.git"
+  },
+  "bin": {
+    "design-handoff-packager": "./bin/design-handoff-packager.mjs"
+  },
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "examples",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "design-system",
+    "handoff",
+    "design-tokens",
+    "manifest",
+    "deterministic",
+    "cli"
+  ],
+  "author": "Edilec Private Limited",
+  "bugs": {
+    "url": "https://github.com/edilec/design-handoff-packager/issues"
+  },
+  "homepage": "https://github.com/edilec/design-handoff-packager#readme"
 }
