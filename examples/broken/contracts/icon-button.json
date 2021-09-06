@@ -1,0 +1,9 @@
+{
+  "name": "IconButton",
+  "element": "button",
+  "props": [
+    { "name": "label", "type": "string", "required": true },
+    { "name": "icon", "type": "string", "required": true }
+  ],
+  "accessibility": { "role": "button", "accessibleName": "from the label prop" }
+}

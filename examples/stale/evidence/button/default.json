@@ -1,0 +1,6 @@
+{
+  "state": "default",
+  "viewport": { "width": 1280, "height": 800 },
+  "checks": ["contrast", "focus-ring", "hit-area"],
+  "notes": "captured from the local story build"
+}

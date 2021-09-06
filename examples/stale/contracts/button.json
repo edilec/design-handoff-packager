@@ -1,0 +1,9 @@
+{
+  "name": "Button",
+  "element": "button",
+  "props": [
+    { "name": "variant", "type": "\"primary\" | \"secondary\"", "default": "primary" },
+    { "name": "disabled", "type": "boolean", "default": "false" }
+  ],
+  "accessibility": { "role": "button", "focusVisible": "required" }
+}
