@@ -126,6 +126,7 @@ export const RULE_SEVERITY = Object.freeze({
   'story-link-external': 'info',
   'story-link-unresolved': 'error',
   'token-document-truncated': 'error',
+  'token-name-unusable': 'error',
   'token-document-too-deep': 'error',
   'token-reference-unresolved': 'error',
   'token-references-unchecked': 'error',
@@ -178,6 +179,7 @@ export const RULE_OUTCOME = Object.freeze({
   'story-link-external': 'policy',
   'story-link-unresolved': 'policy',
   'token-document-truncated': 'evidence',
+  'token-name-unusable': 'policy',
   'token-document-too-deep': 'evidence',
   'token-reference-unresolved': 'policy',
   'token-references-unchecked': 'evidence',
@@ -237,20 +239,23 @@ class Collector {
 }
 
 /**
- * The documented sort key, applied by code unit.
+ * The documented sort key, applied by code unit:
+ * `(location.file, location.pointer, ruleId, message, evidence)`.
  *
- * `message` is the last key rather than a decoration: two unresolved links on
- * the same line of the same note share file, pointer and rule, and without it
- * their order would come from the order the regular expression happened to
- * match -- which is stable here, but stability by accident is what this key
- * exists to replace.
+ * The last two are not decoration. Two unresolved links written on the same
+ * line of the same note share file, pointer and rule, and their messages are
+ * word for word the same -- only the target tells them apart. Without evidence
+ * in the key their order would come from the order the regular expression
+ * happened to match. That is stable today, and stability by accident is
+ * exactly what a documented key exists to replace.
  */
 function sortFindings(findings) {
   return findings.sort((left, right) =>
     byCodeUnit(left.location.file, right.location.file)
     || byCodeUnit(left.location.pointer ?? '', right.location.pointer ?? '')
     || byCodeUnit(left.ruleId, right.ruleId)
-    || byCodeUnit(left.message, right.message))
+    || byCodeUnit(left.message, right.message)
+    || byCodeUnit(left.evidence ?? '', right.evidence ?? ''))
 }
 
 function sha256(bytes) {
@@ -585,6 +590,13 @@ export async function inspectHandoff(options = {}) {
         collector.add('token-document-too-deep', {
           file: document_.source,
           message: `${document_.source} nests deeper than the maxTokenDepth limit of ${limits.maxTokenDepth}, so its token names were not all collected.`,
+        })
+      }
+      if (flattened.rejected.length > 0) {
+        collector.add('token-name-unusable', {
+          file: document_.source,
+          message: `${document_.source} declares ${flattened.rejected.length} group or token key(s) that no dotted citation could name; a key must be letters, digits, "-" or "_" and start with a letter or digit.`,
+          evidence: flattened.rejected.join(', '),
         })
       }
       if (flattened.truncated) {

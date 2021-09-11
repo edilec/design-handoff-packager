@@ -8,9 +8,20 @@
  * this tool checks that a citation points at a token that exists, and says so.
  */
 
-import { byCodeUnit } from './text.mjs'
+import { byCodeUnit, excerpt } from './text.mjs'
 
 const VALUE_KEYS = Object.freeze(['$value', 'value'])
+
+/**
+ * The shape a group or token key must have to be citable.
+ *
+ * A dotted name is the only way a component refers to a token, so a key
+ * carrying a dot, a space or a control character has no name a plan could
+ * write. Such a key is reported rather than silently sanitised: a sanitised
+ * name would print as one thing in the manifest and match another in the
+ * citation check, which is the bidi-override defect wearing a token's clothes.
+ */
+const SEGMENT = /^[A-Za-z0-9][A-Za-z0-9_-]*$/
 
 function isRecord(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
@@ -23,7 +34,7 @@ function isLeaf(node) {
 /**
  * Collect every token name declared by a document.
  *
- * Returns `{names, truncated, tooDeep}`. `truncated` and `tooDeep` are the two
+ * Returns `{names, truncated, tooDeep, rejected}`. `truncated` and `tooDeep` are the two
  * ways this can stop early, and neither is ever a pass: the caller turns each
  * into an `incomplete` report naming the limit it hit. A token set that was
  * only partly read cannot answer "is this citation resolved?" -- absence of a
@@ -36,6 +47,7 @@ function isLeaf(node) {
 export function flattenTokens(document, limits) {
   const { maxTokensPerDocument, maxTokenDepth } = limits
   const names = []
+  const rejected = []
   let truncated = false
   let tooDeep = false
 
@@ -57,6 +69,10 @@ export function flattenTokens(document, limits) {
     }
     for (const key of Object.keys(node).sort(byCodeUnit)) {
       if (key.startsWith('$')) continue
+      if (!SEGMENT.test(key)) {
+        if (rejected.length < 10) rejected.push(excerpt([...path, key].join('.'), 80))
+        continue
+      }
       walk(node[key], [...path, key], depth + 1)
       if (truncated) return
     }
@@ -64,5 +80,6 @@ export function flattenTokens(document, limits) {
 
   walk(document, [], 1)
   names.sort(byCodeUnit)
-  return { names, truncated, tooDeep }
+  rejected.sort(byCodeUnit)
+  return { names, truncated, tooDeep, rejected }
 }
