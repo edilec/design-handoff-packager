@@ -80,6 +80,17 @@ describe('a parse failure never reproduces the document', () => {
     assert.equal(detail, 'the document could not be parsed as JSON')
   })
 
+  test('a message that reaches the position branch WITH a quote still in it', () => {
+    // This is the case the closing guard exists for, and nothing else catches
+    // it: the wording does not end in "is not valid JSON", so the quoting
+    // branch declines it; the offset branch matches and would hand back a
+    // slice that still carries the quoted run. The backstop sees the surviving
+    // double quote and answers the generic sentence instead.
+    const detail = parseFailureDetail(new Error('Unexpected token "' + CREDENTIAL + '" at position 5'))
+    assert.ok(!detail.includes('AKIA'), detail)
+    assert.equal(detail, 'the document could not be parsed as JSON')
+  })
+
   test('a thrown value with no message at all is handled', () => {
     assert.equal(parseFailureDetail(undefined), 'the document could not be parsed as JSON')
     assert.equal(parseFailureDetail({ message: { toString: {} } }), 'the document could not be parsed as JSON')

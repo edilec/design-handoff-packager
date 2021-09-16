@@ -222,6 +222,27 @@ describe('every rule decides the exit code it is documented to decide', () => {
     assert.ok(report.findings.some((finding) => finding.ruleId === 'source-unreadable'))
     assert.ok(!report.findings.some((finding) => finding.ruleId === 'source-missing'))
   })
+
+  test('source-unreadable, when it is the DIRECTORY that cannot be entered', async (t) => {
+    // A different code path from the unreadable file above: the failure lands
+    // on realpath rather than on the read, and it must still be incomplete
+    // rather than absent. Guarding one of the two and not the other is how an
+    // unreadable input gets reported as a missing one.
+    if (typeof process.getuid === 'function' && process.getuid() === 0) {
+      t.skip('root can enter a mode-000 directory, so the fixture cannot be built')
+      return
+    }
+    const root = await writeTree(await scratch(), treeFor())
+    await chmod(resolve(root, 'contracts'), 0o000)
+    const result = runCli(['--root', root, '--json'])
+    await chmod(resolve(root, 'contracts'), 0o755)
+    const report = reportFrom(result)
+    assert.equal(result.code, 2)
+    assert.equal(report.status, 'incomplete')
+    assert.ok(report.findings.some((finding) => finding.ruleId === 'source-unreadable'))
+    assert.ok(!report.findings.some((finding) => finding.ruleId === 'source-missing'),
+      'a directory that cannot be entered is not evidence that the file is gone')
+  })
 })
 
 describe('the behavioural coverage of the rule catalog', () => {

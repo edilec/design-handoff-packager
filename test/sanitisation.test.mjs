@@ -43,17 +43,22 @@ function everyString(value, visit, path = '') {
 
 describe('every class is stripped, whichever door it arrives through', () => {
   for (const [label, character] of CLASSES) {
-    test('through the package name: ' + label, async () => {
+    test('through the package name, which is an identifier: ' + label, async () => {
       const root = await writeTree(await scratch(), treeFor(planFor({
         package: { name: 'ui' + character + 'kit', version: '1.0.0' },
       })))
       const inspection = await inspectHandoff({ root })
-      everyString(inspection.report, (text, path) => {
-        assert.ok(!hasForbiddenCharacter(text), path + ' carried ' + label)
-      })
-      everyString(inspection.manifest ?? {}, (text, path) => {
-        assert.ok(!hasForbiddenCharacter(text), 'manifest ' + path + ' carried ' + label)
-      })
+      // The assertion looks for the CHARACTER, not for what the tool's own
+      // detector calls forbidden. Asking the tool whether it stripped the class
+      // it defines is a guard that moves when the class moves: narrowing the
+      // class narrows the oracle with it, and the test stays green. Measured,
+      // not imagined -- removing the C1 range from this package left the whole
+      // suite passing while U+0085 reached stdout intact.
+      for (const document of [inspection.report, inspection.manifest ?? {}]) {
+        everyString(document, (text, path) => {
+          assert.ok(!text.includes(character), path + ' carried ' + label)
+        })
+      }
     })
 
     test('through a note link target, which is an excerpt: ' + label, async () => {
@@ -62,10 +67,21 @@ describe('every class is stripped, whichever door it arrives through', () => {
       }))
       const inspection = await inspectHandoff({ root })
       everyString(inspection.report, (text, path) => {
-        assert.ok(!hasForbiddenCharacter(text), path + ' carried ' + label)
+        assert.ok(!text.includes(character), path + ' carried ' + label)
       })
     })
   }
+
+  test('and the exported detector agrees, over a report carrying every class at once', async () => {
+    const poison = CLASSES.map(([, character]) => character).join('x')
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      package: { name: 'ui' + poison + 'kit', version: '1.0.0' },
+    })))
+    const inspection = await inspectHandoff({ root })
+    everyString(inspection.report, (text, path) => {
+      assert.ok(!hasForbiddenCharacter(text), path)
+    })
+  })
 
   test('through a component title, which reaches the manifest and not only the report', async () => {
     const base = planFor()
