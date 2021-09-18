@@ -10,7 +10,14 @@
  * is a defect this catalog has already paid for.
  */
 
-import { describeValue, isIdentifier, isRenderableText, parseInstant, pointer } from './text.mjs'
+import {
+  describeValue,
+  hasForbiddenCharacter,
+  isIdentifier,
+  isRenderableText,
+  parseInstant,
+  pointer,
+} from './text.mjs'
 
 const MAX_PATH_LENGTH = 200
 const MAX_TOKEN_NAME_LENGTH = 120
@@ -57,8 +64,18 @@ export function validateRelativePath(value) {
   for (const segment of segments) {
     if (segment === '') return 'must not contain an empty path segment'
     if (segment === '.' || segment === '..') return 'must not contain a "." or ".." segment'
+    // Two separate refusals, because they catch different files. The first is
+    // about what a reader sees; the second is about what the MANIFEST carries.
+    // A relative path is recorded verbatim in the manifest as the source a
+    // packaged file came from, so unlike a message it never passes through the
+    // sanitising excerpt on its way out -- validating only that it renders as
+    // something would let `notes/a<U+2028>b.md` be written into the manifest
+    // with the separator intact.
     if (!isRenderableText(segment, MAX_PATH_LENGTH)) {
-      return 'must not contain a segment that is invisible or carries a control character'
+      return 'must not contain a segment that is invisible once control characters are removed'
+    }
+    if (hasForbiddenCharacter(segment)) {
+      return 'must not contain a control, separator or bidi character, because the path is recorded verbatim in the manifest'
     }
   }
   return null

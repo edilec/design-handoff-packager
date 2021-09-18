@@ -131,6 +131,36 @@ describe('an identifier that would render as nothing is refused, not sanitised',
   })
 })
 
+describe('a path is recorded verbatim in the manifest, so it is refused rather than cleaned', () => {
+  for (const [label, character] of CLASSES) {
+    test(label + ' in a path segment is refused', async () => {
+      const base = planFor()
+      const name = 'notes/a' + character + 'b.md'
+      const root = await writeTree(await scratch(), treeFor(planFor({
+        components: [{ ...base.components[0], notes: name }],
+      }), { [name]: '# note' + String.fromCharCode(10) }))
+      const inspection = await inspectHandoff({ root })
+      assert.equal(inspection.report.status, 'fail')
+      assert.ok(inspection.report.findings.some((finding) => finding.ruleId === 'plan-schema-invalid'))
+      // And nothing carrying it reached output by either route.
+      everyString(inspection.report, (text, path) => {
+        assert.ok(!text.includes(character), path + ' carried ' + label)
+      })
+      assert.equal(inspection.manifest, null)
+    })
+  }
+
+  test('an ordinary path with a space is still accepted', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], notes: 'notes/a b.md' }],
+    }), { 'notes/a b.md': '# note' + String.fromCharCode(10) }))
+    const inspection = await inspectHandoff({ root })
+    assert.equal(inspection.report.status, 'pass')
+    assert.equal(inspection.manifest.components[0].notes, 'components/button/notes.md')
+  })
+})
+
 describe('a value that cannot be stringified never costs the report', () => {
   test('String() throws on it, and the tool still answers', () => {
     const poison = { toString: {} }
