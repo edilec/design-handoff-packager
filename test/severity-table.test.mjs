@@ -10,8 +10,9 @@
 
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 
 import { RULE_OUTCOME, RULE_SEVERITY } from '../src/index.mjs'
 
@@ -58,6 +59,24 @@ describe('the rule catalog', () => {
   test('uses only the severities the contract allows', () => {
     for (const [ruleId, severity] of Object.entries(RULE_SEVERITY)) {
       assert.ok(['error', 'warning', 'info'].includes(severity), ruleId)
+    }
+  })
+
+  test('is the source of every rule id the code actually emits', async () => {
+    // The constructor throws on a rule id that is not in the table, which is
+    // the runtime backstop. This is the compile-time half: a typo at a call
+    // site that no test happens to exercise would otherwise sit there until a
+    // user found it, as an exception in the middle of a run.
+    const source = fileURLToPath(new URL('../src', import.meta.url))
+    const emitted = new Set()
+    for (const name of await readdir(source)) {
+      if (!name.endsWith('.mjs')) continue
+      const text = await readFile(join(source, name), 'utf8')
+      for (const found of text.matchAll(/collector\.add\('([a-z0-9-]+)'/g)) emitted.add(found[1])
+    }
+    assert.ok(emitted.size >= 25, 'the source scan found ' + emitted.size + ' call sites, which looks like a parsing failure')
+    for (const ruleId of emitted) {
+      assert.ok(Object.hasOwn(RULE_SEVERITY, ruleId), ruleId + ' is emitted by a call site but is not in the table')
     }
   })
 
