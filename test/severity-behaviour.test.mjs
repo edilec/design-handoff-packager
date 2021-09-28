@@ -51,6 +51,17 @@ const CASES = [
     })),
   },
   {
+    // `tokensUsed` is emptied on purpose: a duplicate id also stops the token
+    // set being complete, which raises an `evidence` finding and would move
+    // the exit code to 2. This case is here to pin THIS rule's exit code, so
+    // it is the only rule the run fires.
+    rule: 'duplicate-token-document-id',
+    tree: () => treeFor(planFor({
+      tokens: [{ id: 'color', source: 'tokens/color.json' }, { id: 'color', source: 'tokens/space.json' }],
+      components: [{ ...base.components[0], tokensUsed: [] }],
+    }), { 'tokens/space.json': json({ space: { small: { $value: '4px' } } }) }),
+  },
+  {
     rule: 'id-case-collision',
     tree: () => treeFor(planFor({
       components: [base.components[0], { ...base.components[0], id: 'Button' }],

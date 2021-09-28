@@ -7,6 +7,19 @@ All notable changes to this project are documented here. The format follows
 Rule ids are part of the public interface. Renaming or removing one is a
 breaking change and is recorded here.
 
+## [Unreleased]
+
+### Added
+
+- `duplicate-token-document-id` (error, policy): two token documents declared
+  under exactly the same id. `id-case-collision` refused two ids that differ
+  only in case, because they would be one file on a case-insensitive
+  filesystem; two ids that are exactly equal are one file on every filesystem,
+  and that case had no check. The run exited 0 having written four files while
+  reporting five, and the manifest described `tokens/color.json` twice with two
+  sources, two byte counts and two digests -- one of which did not match the
+  file beside it.
+
 ## [0.1.0] - 2026-09-18
 
 First working release.

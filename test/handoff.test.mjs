@@ -8,11 +8,11 @@
 
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { auditHandoff, inspectHandoff } from '../src/index.mjs'
-import { cleanup, fixture, json, planFor, scratch, treeFor, writeTree } from './support.mjs'
+import { cleanup, fixture, json, planFor, reportFrom, ruleIds, runCli, scratch, treeFor, writeTree } from './support.mjs'
 
 after(cleanup)
 
@@ -201,5 +201,72 @@ describe('a plan that packages nothing', () => {
     assert.equal(report.status, 'fail')
     assert.equal(report.summary.checked, 0)
     assert.ok(report.findings.some((finding) => finding.ruleId === 'no-components'))
+  })
+})
+
+/**
+ * Two token documents under one id.
+ *
+ * `id-case-collision` refuses two ids that differ only in case, because they
+ * would be one file on a case-INSENSITIVE filesystem. Two ids that are exactly
+ * equal are one file on EVERY filesystem, and that case had no check at all:
+ * the run exited 0 having written four files while reporting five, and the
+ * manifest listed `tokens/color.json` twice with two sources, two byte counts
+ * and two digests -- one of which described a file that is not the one on disk
+ * beside it.
+ */
+describe('two token documents declared under one id', () => {
+  function duplicated() {
+    return treeFor(
+      planFor({
+        tokens: [{ id: 'color', source: 'tokens/color.json' }, { id: 'color', source: 'tokens/other.json' }],
+      }),
+      { 'tokens/other.json': json({ color: { brand: { secondary: { $value: '#654321' } } } }) },
+    )
+  }
+
+  test('fail the run rather than packaging one of them over the other', async () => {
+    const root = await writeTree(await scratch(), duplicated())
+    const inspection = await inspectHandoff({ root })
+    assert.ok(ruleIds(inspection.report).includes('duplicate-token-document-id'))
+    assert.equal(inspection.manifest, null, 'a plan that does not hold together is not packaged')
+    assert.equal(inspection.files, null)
+  })
+
+  test('and the finding points at the second declaration, not the first', async () => {
+    const root = await writeTree(await scratch(), duplicated())
+    const report = await auditHandoff({ root })
+    const finding = report.findings.find((entry) => entry.ruleId === 'duplicate-token-document-id')
+    assert.equal(finding.location.pointer, '/tokens/1/id')
+    assert.match(finding.message, /declared more than once/)
+  })
+
+  test('through the command line, nothing is written and the exit code says so', async () => {
+    // Exit 2, not 1: the second document was refused rather than indexed, so
+    // the citation `color.brand.primary` could not be resolved against the
+    // whole token set either. Reporting it as unresolved would be reporting an
+    // unknown as an absence, so the run says `incomplete` and says why.
+    // `severity-behaviour.test.mjs` pins the rule's own exit code of 1 on a
+    // plan that cites no token.
+    const root = await writeTree(await scratch(), duplicated())
+    const out = resolve(await scratch('dhp-out-'), 'package')
+    const result = runCli(['--root', root, '--out', out, '--json'])
+    assert.equal(result.code, 2)
+    const report = reportFrom(result)
+    assert.equal(report.status, 'incomplete')
+    assert.ok(ruleIds(report).includes('duplicate-token-document-id'))
+    await assert.rejects(readdir(out), { code: 'ENOENT' }, 'nothing was written')
+  })
+
+  test('an exact duplicate is caught even when the case rule cannot see it', async () => {
+    // `noteCaseCollision` returns null when the folded key maps back to the
+    // same spelling, which is exactly what two identical ids do. This test
+    // fails if the exact check is deleted and the case rule is left to cover
+    // it, which is the shape the defect had.
+    const root = await writeTree(await scratch(), duplicated())
+    const report = await auditHandoff({ root })
+    assert.ok(!ruleIds(report).includes('id-case-collision'),
+      'the case rule does not fire here, so it cannot be what refuses this plan')
+    assert.notEqual(report.status, 'pass')
   })
 })

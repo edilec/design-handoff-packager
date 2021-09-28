@@ -32,6 +32,7 @@ together and an exit code cannot be edited at all.
 | `cross-reference-unresolved` | error | policy | A component's `seeAlso` names a component this plan does not declare. |
 | `duplicate-component-id` | error | policy | Two components share an id. |
 | `duplicate-state` | error | policy | One component declares the same state name twice. |
+| `duplicate-token-document-id` | error | policy | Two token documents share an id exactly. They would be written to one path in the package, so one manifest entry would describe a file that is not the one beside it. This is a separate rule from `id-case-collision`: an exact duplicate is one file on every filesystem, not only a case-insensitive one. |
 | `id-case-collision` | error | policy | Two ids, state names or token document ids differ only in case. They would be one path on a case-insensitive filesystem, so the package would not be reproducible across machines. |
 | `no-components` | error | policy | The plan packages nothing. A pass on no evidence is not a pass. |
 | `note-link-external` | info | policy | A link in a usage note leaves the handoff. It is recorded as written and never fetched. |

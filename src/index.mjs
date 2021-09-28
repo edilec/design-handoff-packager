@@ -102,6 +102,7 @@ export const RULE_SEVERITY = Object.freeze({
   'cross-reference-unresolved': 'error',
   'duplicate-component-id': 'error',
   'duplicate-state': 'error',
+  'duplicate-token-document-id': 'error',
   'id-case-collision': 'error',
   'no-components': 'error',
   'note-link-external': 'info',
@@ -155,6 +156,7 @@ export const RULE_OUTCOME = Object.freeze({
   'cross-reference-unresolved': 'policy',
   'duplicate-component-id': 'policy',
   'duplicate-state': 'policy',
+  'duplicate-token-document-id': 'policy',
   'id-case-collision': 'policy',
   'no-components': 'policy',
   'note-link-external': 'policy',
@@ -556,6 +558,7 @@ export async function inspectHandoff(options = {}) {
   let tokenSetComplete = true
   const tokenDocuments = []
   const tokenIdCase = new Map()
+  const seenTokenIds = new Set()
 
   if (plan.tokens.length > limits.maxTokenDocuments) {
     tokenSetComplete = false
@@ -566,6 +569,24 @@ export async function inspectHandoff(options = {}) {
     })
   } else {
     for (const document_ of plan.tokens) {
+      // Two ids that differ only in case are one file on a case-INSENSITIVE
+      // filesystem, which is what `id-case-collision` exists to stop. Two ids
+      // that are exactly equal are one file on EVERY filesystem, and that was
+      // the hole: the manifest listed `tokens/<id>.json` twice with two
+      // sources, two byte counts and two digests, one of which described a
+      // file that is not the one beside it. Components and state names were
+      // already checked for the exact case; token documents were not.
+      if (seenTokenIds.has(document_.id)) {
+        collector.add('duplicate-token-document-id', {
+          file: planFile,
+          pointer: `${document_.pointer}/id`,
+          message: `token document "${document_.id}" is declared more than once. Both would be written to one path in the package, so the manifest would describe a file that is not the one beside it.`,
+          suggestion: 'Give each token document its own id, or merge the two sources into one document.',
+        })
+        tokenSetComplete = false
+        continue
+      }
+      seenTokenIds.add(document_.id)
       const collision = noteCaseCollision(tokenIdCase, document_.id, true)
       if (collision !== null) {
         collector.add('id-case-collision', {
