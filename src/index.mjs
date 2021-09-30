@@ -42,9 +42,10 @@ import {
   assertWritableDestination,
   ensureDirectoryWithin,
   prepareOutputRoot,
+  resolveOutputRoot,
 } from './write-guard.mjs'
 
-export { DestinationError, assertWritableDestination, ensureDirectoryWithin, prepareOutputRoot } from './write-guard.mjs'
+export { DestinationError, assertWritableDestination, ensureDirectoryWithin, prepareOutputRoot, resolveOutputRoot } from './write-guard.mjs'
 export { byCodeUnit, decodeUtf8, excerpt, hasForbiddenCharacter, isIdentifier, isRenderableText, parseFailureDetail, parseInstant, safeString } from './text.mjs'
 export { extractLinks, classifyTarget } from './links.mjs'
 export { flattenTokens } from './tokens.mjs'
@@ -989,10 +990,28 @@ export async function auditHandoff(options = {}) {
  * Write the package.
  *
  * Called only with an inspection that passed, because `inspectHandoff` hands
- * back a null manifest otherwise. The destination is settled before the first
- * byte is written and every file is checked individually: `--out` may hold
- * anything, and a file inside it may be a link to somewhere else or a hard
- * link to a source file this run just hashed.
+ * back a null manifest otherwise.
+ *
+ * Nothing is written until every destination has been settled, and that
+ * ordering is the guard, not a tidiness preference. Writing each file as its
+ * own destination was checked meant a refusal part-way along -- a hard link to
+ * an input sitting in an otherwise ordinary directory -- left thirteen package
+ * files on disk and no manifest, while the exit code, the README and the help
+ * text all said nothing had been written. A half-written package with no
+ * manifest is precisely the artifact this tool exists to prevent.
+ *
+ * What the two phases do and do not promise:
+ *
+ * - **No file is written** unless every one of them can be. That is checked
+ *   below and pinned by a test.
+ * - The package directory and the subdirectories inside it ARE created during
+ *   phase one, because a destination cannot be inspected until its parent
+ *   exists. They are left behind on a refusal, empty. That is stated here, in
+ *   the help text and in the README rather than papered over; removing them
+ *   again would mean deleting directories on an error path, which is a worse
+ *   trade than an empty directory.
+ * - Nothing at all is created in the tree being packaged: the overlap check
+ *   runs before the destination directory is created, not after.
  */
 export async function writeHandoffPackage(inspection, options = {}) {
   const { out, overwrite = false, label = '--out' } = options
@@ -1001,7 +1020,31 @@ export async function writeHandoffPackage(inspection, options = {}) {
   }
   if (typeof out !== 'string' || out.trim() === '') throw new TypeError('An output directory is required')
 
-  const realOut = await prepareOutputRoot(out, { allowNonEmpty: overwrite, label })
+  const serializedManifest = `${JSON.stringify(inspection.manifest, null, 2)}\n`
+  const contents = [...inspection.files, { path: MANIFEST_NAME, content: Buffer.from(serializedManifest, 'utf8') }]
+
+  // One package path, one file. The plan-level checks -- duplicate component
+  // id, duplicate state, duplicate token document id, and the case-collision
+  // rule behind all three -- are what keep this true, and this is the place
+  // that does not take their word for it. Two entries at one path would leave
+  // the manifest describing a file that is not the one beside it, which is a
+  // package that lies rather than a package that is missing something.
+  const claimed = new Set()
+  for (const file of contents) {
+    if (claimed.has(file.path)) {
+      throw new TypeError(
+        `Two files in this package would be written to ${excerpt(file.path, 240)}. A manifest entry `
+        + 'that does not describe the file beside it is worse than no manifest, so nothing is written.',
+      )
+    }
+    claimed.add(file.path)
+  }
+
+  // Before anything is created: a destination that overlaps the tree being
+  // packaged is refused while it is still only a path. Creating it first left
+  // an empty directory inside a source tree the README promises is never
+  // modified.
+  const settled = await resolveOutputRoot(out, { label })
   for (const input of inspection.inputs) {
     let real
     try {
@@ -1009,17 +1052,19 @@ export async function writeHandoffPackage(inspection, options = {}) {
     } catch {
       continue
     }
-    if (isInside(realOut, real) || isInside(real, realOut)) {
+    if (isInside(settled.real, real) || isInside(real, settled.real)) {
       throw new DestinationError(
-        `${label} ${realOut} overlaps the tree being packaged (${real}). The package is a derived `
+        `${label} ${settled.real} overlaps the tree being packaged (${real}). The package is a derived `
         + 'artifact and is written somewhere else, so a run can never rewrite what it read.',
       )
     }
   }
 
-  const written = []
-  const serializedManifest = `${JSON.stringify(inspection.manifest, null, 2)}\n`
-  for (const file of [...inspection.files, { path: MANIFEST_NAME, content: Buffer.from(serializedManifest, 'utf8') }]) {
+  const realOut = await prepareOutputRoot(out, { allowNonEmpty: overwrite, label })
+
+  // Phase one: settle every destination, and write none of them.
+  const destinations = []
+  for (const file of contents) {
     const segments = file.path.split('/')
     const directory = await ensureDirectoryWithin(realOut, segments.slice(0, -1))
     const destination = await assertWritableDestination(resolve(directory, segments[segments.length - 1]), {
@@ -1028,8 +1073,14 @@ export async function writeHandoffPackage(inspection, options = {}) {
       label,
       rootLabel: `${label} ${realOut}`,
     })
-    await writeFile(destination, file.content)
-    written.push(file.path)
+    destinations.push({ path: file.path, destination, content: file.content })
+  }
+
+  // Phase two: every destination was accepted, so every file is written.
+  const written = []
+  for (const entry of destinations) {
+    await writeFile(entry.destination, entry.content)
+    written.push(entry.path)
   }
   return { out: realOut, written: written.sort(byCodeUnit) }
 }

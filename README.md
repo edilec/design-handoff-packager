@@ -139,7 +139,7 @@ different machines.
 | ---: | --- | --- |
 | `0` | every internal link resolved and every required state had evidence | the report |
 | `1` | at least one error-severity rule fired; **nothing was written** | the report |
-| `2` | invalid usage, or a refused destination; nothing was written | **empty** |
+| `2` | invalid usage, or a refused destination; **no file was written** | **empty** |
 | `2` | evidence that could not be obtained; status `incomplete` | the report |
 
 A consumer that pipes stdout must handle an empty stdout on exit 2. A
@@ -199,6 +199,16 @@ is what every tool that lost a file had already done.
   comparing device and inode. It has no target to resolve and shares no path
   with the file it names, so nothing else sees it. The input set is every path
   the tool stats, lists or reasons about, not only the ones it opens.
+
+Every destination is settled before the first byte is written. A refusal
+part-way along would otherwise leave a directory holding most of a package and
+no manifest, which is the artifact this tool exists to prevent: the check
+happens for every file first, and the writes happen only if every one of them
+was accepted. The `--out` directory and the subdirectories inside it *are*
+created during that check, because a destination cannot be inspected until its
+parent exists, and a refusal leaves them behind, empty. Nothing is created
+inside the tree being packaged: a `--out` that overlaps the source is refused
+while it is still only a path.
 
 `--out` **itself is not confined to anything.** It is a path you name, and a
 symbolically linked parent on the way to it is followed, exactly as `mkdir` and

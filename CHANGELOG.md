@@ -20,6 +20,23 @@ breaking change and is recorded here.
   sources, two byte counts and two digests -- one of which did not match the
   file beside it.
 
+### Fixed
+
+- A destination refused part-way through the package write left the files
+  before it on disk -- thirteen package files and no manifest -- while the exit
+  code, the README exit-code table and the help text all said nothing had been
+  written. Every destination is now settled before the first byte is written.
+  The `--out` directory and the subdirectories inside it are still created
+  during that check, because a destination cannot be inspected until its parent
+  exists; the README and the help text now say so instead of claiming more.
+- `--out` pointing inside the tree being packaged created the directory and
+  only then refused the run, leaving a new empty directory inside a source tree
+  the README says is never modified. The overlap check now runs while the
+  destination is still only a path. `resolveOutputRoot` is the new, effect-free
+  half of `prepareOutputRoot`.
+- `writeHandoffPackage` refuses two package files claiming one path, rather than
+  writing one over the other and leaving the manifest describing neither.
+
 ## [0.1.0] - 2026-09-18
 
 First working release.

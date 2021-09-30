@@ -43,7 +43,9 @@ Options:
                       INSIDE it is confined to its real path, is refused if it
                       is a link, and is refused if it is one of the files
                       being packaged -- including through a hard link, which
-                      shares no path with the file it names.
+                      shares no path with the file it names. Every one of
+                      those checks runs before the first byte is written, so
+                      a refusal never leaves half a package behind.
   --overwrite         Write into a --out directory that already holds entries.
                       Each file is still checked individually.
   --now INSTANT       The current time, as an ISO-8601 UTC instant, for the
@@ -61,9 +63,10 @@ Exit codes:
   0  checked, every internal link resolved and every required state had
      evidence; the package was written if --out was given
   1  checked, and at least one error-severity rule fired; nothing was written
-  2  invalid usage or a refused destination (stdout stays EMPTY, nothing is
-     written), or evidence that could not be obtained (stdout carries a
-     report whose status is "incomplete")
+  2  invalid usage or a refused destination (stdout stays EMPTY and no file
+     is written; the --out directory and the subdirectories inside it may
+     have been created), or evidence that could not be obtained (stdout
+     carries a report whose status is "incomplete")
 
 --help and --version sit outside that table: they answer a question about the
 tool rather than about a handoff, and both exit 0.
@@ -159,10 +162,11 @@ async function main(argv) {
       process.stderr.write(`Wrote ${written.written.length} file(s) to ${written.out}\n`)
     } catch (error) {
       if (!(error instanceof DestinationError) && !(error instanceof TypeError)) throw error
-      // Refused before anything was written, and before the report was
-      // emitted: a refused destination is a configuration error, so stdout
-      // stays empty rather than carrying a report about a run whose output
-      // never happened.
+      // Refused before any file was written, and before the report was
+      // emitted: every destination is settled first, so a refusal anywhere
+      // means none of them were written. A refused destination is a
+      // configuration error, so stdout stays empty rather than carrying a
+      // report about a run whose output never happened.
       process.stderr.write(`${error.message}\n`)
       return 2
     }

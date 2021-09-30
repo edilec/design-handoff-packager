@@ -38,7 +38,7 @@
  */
 
 import { lstat, mkdir, readdir, realpath, stat } from 'node:fs/promises'
-import { dirname, join, resolve, sep } from 'node:path'
+import { basename, dirname, join, resolve, sep } from 'node:path'
 
 /** Raised when a destination cannot be written to safely. The caller exits 2. */
 export class DestinationError extends Error {
@@ -172,29 +172,22 @@ export async function ensureDirectoryWithin(base, segments) {
 }
 
 /**
- * Settle the package directory before a single byte is written, and return its
- * real path.
+ * Decide what `--out` resolves to, and refuse it, WITHOUT creating anything.
  *
- * What this confines and what it does not, stated plainly because documenting
- * a confinement the code does not perform is worse than the silence it
- * replaces:
+ * Separated from `prepareOutputRoot` because creating the directory is itself
+ * an effect on the filesystem, and the caller has one more question to answer
+ * before it is allowed: does this destination overlap the tree being packaged?
+ * Asking that after `mkdir` left an empty directory sitting inside the source
+ * tree of a run that then exited 2 -- a modification to a tree the README says
+ * is never modified.
  *
- * - The directory itself is refused if it IS a symbolic link (hole 1), if it
- *   exists and is not a directory, or if it already holds entries and
- *   `allowNonEmpty` was not asked for.
- * - The directory itself is NOT confined to anything. It is an absolute or
- *   relative path the caller names, and a symbolically linked parent on the
- *   way to it is followed, exactly as `mkdir` and `cp` follow one. There is no
- *   root for it to escape from, and inventing one would refuse legitimate
- *   destinations.
- * - Only the last segment is created. A parent that does not exist is refused
- *   rather than conjured, so a mistyped path fails loudly instead of building
- *   a tree somewhere unexpected.
- * - Every file and every subdirectory written INSIDE it is confined to the
- *   real path returned here.
+ * Returns `{target, real, exists}`. `real` is the path the directory will have
+ * once it is created: the real path of its parent plus the last segment, which
+ * is exactly what `realpath` would answer afterwards, because a symbolic link
+ * AT the destination is refused here rather than resolved.
  */
-export async function prepareOutputRoot(destination, options = {}) {
-  const { allowNonEmpty = false, label = '--out' } = options
+export async function resolveOutputRoot(destination, options = {}) {
+  const { label = '--out' } = options
   const target = resolve(destination)
 
   let existing = null
@@ -215,30 +208,70 @@ export async function prepareOutputRoot(destination, options = {}) {
   if (existing !== null && !existing.isDirectory()) {
     throw new DestinationError(`${label} ${target} exists and is not a directory.`)
   }
+  if (existing !== null) return { target, real: await realpath(target), exists: true }
 
-  if (existing === null) {
+  let parent
+  try {
+    parent = await realpath(dirname(target))
+  } catch {
+    throw new DestinationError(
+      `${label} ${target} names a parent directory that does not exist. `
+      + 'Only the last segment is created, so that a mistyped path fails here rather '
+      + 'than building a tree somewhere unexpected.',
+    )
+  }
+  return { target, real: join(parent, basename(target)), exists: false }
+}
+
+/**
+ * Settle the package directory before a single byte is written, and return its
+ * real path.
+ *
+ * What this confines and what it does not, stated plainly because documenting
+ * a confinement the code does not perform is worse than the silence it
+ * replaces:
+ *
+ * - The directory itself is refused if it IS a symbolic link (hole 1), if it
+ *   exists and is not a directory, or if it already holds entries and
+ *   `allowNonEmpty` was not asked for.
+ * - The directory itself is NOT confined to anything. It is an absolute or
+ *   relative path the caller names, and a symbolically linked parent on the
+ *   way to it is followed, exactly as `mkdir` and `cp` follow one. There is no
+ *   root for it to escape from, and inventing one would refuse legitimate
+ *   destinations.
+ * - Only the last segment is created. A parent that does not exist is refused
+ *   rather than conjured, so a mistyped path fails loudly instead of building
+ *   a tree somewhere unexpected.
+ * - Every file and every subdirectory written INSIDE it is confined to the
+ *   real path returned here.
+ *
+ * This DOES create the directory, so a caller with a further reason to refuse
+ * the destination must ask `resolveOutputRoot` first and refuse before getting
+ * here.
+ */
+export async function prepareOutputRoot(destination, options = {}) {
+  const { allowNonEmpty = false, label = '--out' } = options
+  const settled = await resolveOutputRoot(destination, { label })
+
+  if (!settled.exists) {
     try {
-      await mkdir(target)
+      await mkdir(settled.target)
     } catch (error) {
-      if (error.code === 'ENOENT') {
-        throw new DestinationError(
-          `${label} ${target} names a parent directory that does not exist. `
-          + 'Only the last segment is created, so that a mistyped path fails here rather '
-          + 'than building a tree somewhere unexpected.',
-        )
-      }
-      throw new DestinationError(`${label} ${target} could not be created: ${error.code ?? 'unknown error'}`)
+      throw new DestinationError(`${label} ${settled.target} could not be created: ${error.code ?? 'unknown error'}`)
     }
-  } else if (!allowNonEmpty) {
-    const entries = await readdir(target)
+    return realpath(settled.target)
+  }
+
+  if (!allowNonEmpty) {
+    const entries = await readdir(settled.target)
     if (entries.length > 0) {
       throw new DestinationError(
-        `${label} ${target} already holds ${entries.length} entr(ies). Pass --overwrite to `
+        `${label} ${settled.target} already holds ${entries.length} entr(ies). Pass --overwrite to `
         + 'write into it anyway; each file is still refused individually if it is a link '
         + 'or is one of the files being packaged.',
       )
     }
   }
 
-  return realpath(target)
+  return settled.real
 }

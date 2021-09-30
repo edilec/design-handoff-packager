@@ -140,6 +140,18 @@ describe('the package never overlaps the tree it was made from', () => {
     assert.match(result.stderr, /overlaps the tree being packaged/)
   })
 
+  test('and is refused while it is still only a path, so the source tree is untouched', async () => {
+    // The overlap check used to run AFTER the destination had been created,
+    // which left a new empty directory inside a tree the README says is never
+    // modified, on a run that then exited 2.
+    const root = await passingRoot()
+    const before = (await readdir(root, { recursive: true })).sort()
+    const result = runCli(['--root', root, '--out', resolve(root, 'package')])
+    assert.equal(result.code, 2)
+    assert.deepEqual((await readdir(root, { recursive: true })).sort(), before,
+      'the run created something inside the tree it was packaging')
+  })
+
   test('--out containing the root is refused', async () => {
     const enclosing = await scratch('dhp-enclosing-')
     const root = await writeTree(resolve(enclosing, 'source'), treeFor())
@@ -228,5 +240,75 @@ describe('the library refuses to package an inspection that did not pass', () =>
     assert.equal(result.code, 0)
     assert.deepEqual(await readdir(scratchRoot), [])
     assert.equal(json({}), '{}')
+  })
+})
+
+/**
+ * A destination refused part-way through the write.
+ *
+ * Every file used to be written as its own destination was checked, so a
+ * refusal on the twelfth file left eleven package files on disk and no
+ * manifest -- while the exit code, the README exit-code table and the help
+ * text all said nothing had been written. A directory holding most of a
+ * package and no manifest is exactly the artifact this tool exists to prevent.
+ */
+describe('a refusal part-way through the package', () => {
+  async function refusedMidWrite() {
+    const root = await passingRoot()
+    const out = resolve(await scratch('dhp-out-'), 'package')
+    await mkdir(out)
+    await mkdir(resolve(out, 'tokens'))
+    // `tokens/color.json` sorts last among the package files, so eleven files
+    // precede it. It is a hard link to a file the run read, which is refused
+    // by device and inode.
+    await link(resolve(root, 'contracts/button.json'), resolve(out, 'tokens/color.json'))
+    return { root, out }
+  }
+
+  test('writes no file at all, not just the ones after it', async () => {
+    const { root, out } = await refusedMidWrite()
+    const result = runCli(['--root', root, '--out', out, '--overwrite', '--json'])
+    assert.equal(result.code, 2)
+    assert.equal(result.stdout, '')
+    assert.match(result.stderr, /inode/)
+
+    const survivors = (await readdir(out, { recursive: true, withFileTypes: true }))
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name)
+      .sort()
+    assert.deepEqual(survivors, ['color.json'],
+      'only the hard link that was already there may remain')
+  })
+
+  test('and the file that was refused is left exactly as it was', async () => {
+    const { root, out } = await refusedMidWrite()
+    const before = await readFile(resolve(root, 'contracts/button.json'), 'utf8')
+    runCli(['--root', root, '--out', out, '--overwrite', '--json'])
+    assert.equal(await readFile(resolve(root, 'contracts/button.json'), 'utf8'), before)
+    assert.equal(await readFile(resolve(out, 'tokens/color.json'), 'utf8'), before)
+  })
+
+  test('and no manifest is left claiming a package that is not there', async () => {
+    const { root, out } = await refusedMidWrite()
+    runCli(['--root', root, '--out', out, '--overwrite', '--json'])
+    await assert.rejects(readFile(resolve(out, 'manifest.json')), { code: 'ENOENT' })
+  })
+})
+
+describe('one package path, one file', () => {
+  test('a library caller cannot write two different files to one path', async () => {
+    // The plan-level rules -- duplicate component id, duplicate state,
+    // duplicate token document id, and the case-collision rule behind all
+    // three -- are what keep this true for the command line. This is the
+    // backstop that does not take their word for it, on the exported API.
+    const root = await passingRoot()
+    const inspection = await inspectHandoff({ root })
+    const doubled = {
+      ...inspection,
+      files: [...inspection.files, { ...inspection.files[0], source: 'elsewhere.json' }],
+    }
+    const out = resolve(await scratch('dhp-out-'), 'package')
+    await assert.rejects(() => writeHandoffPackage(doubled, { out }), TypeError)
+    await assert.rejects(readdir(out), { code: 'ENOENT' }, 'nothing was written')
   })
 })
