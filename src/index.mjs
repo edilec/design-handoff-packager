@@ -470,15 +470,31 @@ export async function inspectHandoff(options = {}) {
   try {
     realRoot = await realpath(rootCandidate)
   } catch (error) {
+    // The root the caller named is an absolute host path, and it does not go
+    // in the report: `location.file` is relative to the root by contract, and
+    // "no absolute host path appears in the report" is a guarantee this tool
+    // states. A caller knows which root it passed; a report that travels does
+    // not need to carry the machine it was made on.
     collector.add('root-unreadable', {
       file: '.',
-      message: `the root ${excerpt(root, 160)} could not be resolved: ${error.code ?? 'unknown error'}.`,
+      message: `the root could not be resolved: ${error.code ?? 'unknown error'}.`,
+      suggestion: 'Check the --root argument.',
     })
     return finish({ collector, summary: emptySummary(), manifest: null, files: null, inputs, planFile: DEFAULT_PLAN_NAME })
   }
   inputs.add(realRoot)
 
   const planCandidate = resolve(realRoot, planOption)
+  // Decided before the file is looked for, not after. Checking containment
+  // only once `realpath` succeeded meant a plan path outside the root that did
+  // not exist got a report instead of a refusal, and its `location.file`
+  // climbed out of the root with one `../` per directory the root happens to
+  // sit under -- so the same configuration produced different report bytes on
+  // two machines. Whether the file exists is a different question from whether
+  // the caller was allowed to name it.
+  if (!isInside(realRoot, planCandidate)) {
+    throw new TypeError('The plan must resolve inside the root, so that every path in the report is relative to it')
+  }
   inputs.add(planCandidate)
   let realPlan
   try {

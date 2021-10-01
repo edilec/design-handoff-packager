@@ -36,6 +36,18 @@ breaking change and is recorded here.
   half of `prepareOutputRoot`.
 - `writeHandoffPackage` refuses two package files claiming one path, rather than
   writing one over the other and leaving the manifest describing neither.
+- `root-unreadable` carried the caller's whole absolute root inside its message,
+  which falsified the guarantee that no absolute host path appears in the
+  report. The test that claimed to pin that guarantee only ever walked a
+  passing tree, so it never reached the one finding raised before anything is
+  known to be relative to anything. It now walks a failing report, an
+  incomplete one, and that one.
+- A `--plan` that resolves outside the root and does not exist produced a report
+  whose `location.file` climbed out of the root with one `../` per directory the
+  root sits under, so the same configuration produced different report bytes on
+  two machines. Containment is now decided before the file is looked for:
+  whether the file exists is a different question from whether the caller was
+  allowed to name it.
 
 ## [0.1.0] - 2026-09-18
 
