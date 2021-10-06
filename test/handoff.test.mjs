@@ -8,7 +8,7 @@
 
 import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { auditHandoff, inspectHandoff } from '../src/index.mjs'
@@ -167,14 +167,40 @@ describe('missing required state evidence', () => {
     assert.equal(inspection.files, null)
   })
 
-  test('an evidence file that exists but cannot be read is incomplete, not missing', async () => {
+  test('a directory where the evidence should be fails the run, and is not reported as absence', async () => {
+    // The tool looked and got a definite answer: what is there is not a
+    // regular file. That is a plan the tree contradicts -- a policy failure,
+    // exit 1 -- and NOT an unknown. This test was named "is incomplete, not
+    // missing" while asserting no status at all; the tool answers `fail`, and
+    // the case that really is incomplete is the one below.
     const root = await fixture()
     await rm(resolve(root, 'evidence/button-disabled.json'))
     await mkdir(resolve(root, 'evidence/button-disabled.json'))
     const report = await auditHandoff({ root })
+    assert.equal(report.status, 'fail')
     assert.ok(report.findings.some((finding) => finding.ruleId === 'source-not-a-file'))
     assert.ok(!report.findings.some((finding) => finding.ruleId === 'state-evidence-missing'),
       'a directory in the way is not evidence of absence')
+  })
+
+  test('evidence that exists and cannot be read is incomplete, not missing', async (t) => {
+    if (typeof process.getuid === 'function' && process.getuid() === 0) {
+      t.skip('root can read a mode-000 file, so the fixture cannot be built')
+      return
+    }
+    const root = await fixture()
+    const evidence = resolve(root, 'evidence/button-disabled.json')
+    await chmod(evidence, 0o000)
+    // Proving the instrument before using it: if this read succeeded, the
+    // fixture would be an ordinary readable file and the test would pass
+    // without exercising anything.
+    await assert.rejects(readFile(evidence), { code: 'EACCES' }, 'the fixture is not unreadable')
+    const report = await auditHandoff({ root })
+    await chmod(evidence, 0o644)
+    assert.equal(report.status, 'incomplete', 'unknown evidence is never a pass and never a policy failure')
+    assert.ok(report.findings.some((finding) => finding.ruleId === 'source-unreadable'))
+    assert.ok(!report.findings.some((finding) => finding.ruleId === 'state-evidence-missing'),
+      'a file that could not be read is not an absent one')
   })
 
   test('a state the plan does not require is packaged without complaint', async () => {

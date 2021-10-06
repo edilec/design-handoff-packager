@@ -49,6 +49,13 @@ breaking change and is recorded here.
   suite green. The run is now given a working directory, a temporary directory
   and a home directory of its own, and all three are asserted empty afterwards
   along with the tree it was handed.
+- The test named "an evidence file that exists but cannot be read is incomplete,
+  not missing" drove a fixture that produces `fail`, and asserted no status at
+  all. A directory standing where the evidence should be is a definite answer,
+  not an unknown, so `fail` is right and the name was wrong. It now says what it
+  checks and asserts the status, and the case that really is incomplete -- an
+  evidence file that exists and cannot be read -- has a test of its own that
+  proves its fixture is unreadable before relying on it.
 - A `--plan` that resolves outside the root and does not exist produced a report
   whose `location.file` climbed out of the root with one `../` per directory the
   root sits under, so the same configuration produced different report bytes on
