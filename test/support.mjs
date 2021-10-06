@@ -92,6 +92,7 @@ export function runCli(args, options = {}) {
   const result = spawnSync(process.execPath, [BIN, ...args], {
     encoding: 'utf8',
     cwd: options.cwd ?? PACKAGE_ROOT,
+    ...(options.env === undefined ? {} : { env: { ...process.env, ...options.env } }),
   })
   return { code: result.status, stdout: result.stdout, stderr: result.stderr }
 }

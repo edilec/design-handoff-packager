@@ -42,6 +42,13 @@ breaking change and is recorded here.
   passing tree, so it never reached the one finding raised before anything is
   known to be relative to anything. It now walks a failing report, an
   incomplete one, and that one.
+- The test named "a plan that names no output directory writes nothing" asserted
+  `readdir()` of a fresh scratch directory the CLI was never told about and
+  `JSON.stringify({}, null, 2) === '{}'`: two constants, and a mutation that
+  wrote a whole package into `tmpdir()` on every run with no `--out` left the
+  suite green. The run is now given a working directory, a temporary directory
+  and a home directory of its own, and all three are asserted empty afterwards
+  along with the tree it was handed.
 - A `--plan` that resolves outside the root and does not exist produced a report
   whose `location.file` climbed out of the root with one `../` per directory the
   root sits under, so the same configuration produced different report bytes on

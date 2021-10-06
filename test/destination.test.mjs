@@ -14,7 +14,7 @@ import { link, mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/prom
 import { resolve } from 'node:path'
 
 import { DestinationError, inspectHandoff, writeHandoffPackage } from '../src/index.mjs'
-import { cleanup, json, planFor, runCli, scratch, treeFor, writeTree } from './support.mjs'
+import { cleanup, planFor, runCli, scratch, treeFor, writeTree } from './support.mjs'
 
 after(cleanup)
 
@@ -233,13 +233,32 @@ describe('the library refuses to package an inspection that did not pass', () =>
     await assert.rejects(() => writeHandoffPackage(inspection, { out }), TypeError)
   })
 
-  test('and a plan that names no output directory writes nothing', async () => {
+  test('and a run with no --out writes nothing anywhere it could reach', async () => {
+    // What this replaces asserted `readdir()` of a fresh scratch directory the
+    // CLI was never told about, and `JSON.stringify({}, null, 2) === '{}'`. Two
+    // constants. A mutation that wrote a whole package into `tmpdir()` on
+    // every run with no --out left the entire suite green.
+    //
+    // A tool cannot be proven to have written nothing to the whole filesystem,
+    // so the three places a run could plausibly reach without being told to
+    // are each pointed at an empty directory of their own, and the tree it was
+    // given is compared before and after.
     const root = await passingRoot()
-    const scratchRoot = await scratch('dhp-out-')
-    const result = runCli(['--root', root, '--json'])
-    assert.equal(result.code, 0)
-    assert.deepEqual(await readdir(scratchRoot), [])
-    assert.equal(json({}), '{}')
+    const before = (await readdir(root, { recursive: true })).sort()
+    const cwd = await scratch('dhp-cwd-')
+    const temporary = await scratch('dhp-tmp-')
+    const home = await scratch('dhp-home-')
+
+    const result = runCli(['--root', root, '--json'], {
+      cwd,
+      env: { TMPDIR: temporary, TMP: temporary, TEMP: temporary, HOME: home },
+    })
+
+    assert.equal(result.code, 0, result.stderr)
+    assert.deepEqual(await readdir(cwd, { recursive: true }), [], 'the working directory')
+    assert.deepEqual(await readdir(temporary, { recursive: true }), [], 'the temporary directory')
+    assert.deepEqual(await readdir(home, { recursive: true }), [], 'the home directory')
+    assert.deepEqual((await readdir(root, { recursive: true })).sort(), before, 'the tree it was given')
   })
 })
 
