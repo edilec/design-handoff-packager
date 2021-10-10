@@ -56,6 +56,14 @@ breaking change and is recorded here.
   checks and asserts the status, and the case that really is incomplete -- an
   evidence file that exists and cannot be read -- has a test of its own that
   proves its fixture is unreadable before relying on it.
+- The severity and outcome tables were pinned by a test that read them. Sweeping
+  every rule -- flipping its severity one step, and its outcome class, in the
+  source table and in `docs/handoff-rules.md` together -- left 20 of 74 such
+  edits with the suite green, including every `policy -> evidence` flip, because
+  the expected exit code moved with the table. Each case now carries a
+  hand-written expectation of the observed output (`fail`, `incomplete` or
+  `clean`) with the error and warning counts, and a separate test says which
+  case to revisit when a table is changed deliberately. All 74 are now killed.
 - A `--plan` that resolves outside the root and does not exist produced a report
   whose `location.file` climbed out of the root with one `../` per directory the
   root sits under, so the same configuration produced different report bytes on
