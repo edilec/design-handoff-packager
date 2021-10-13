@@ -40,6 +40,24 @@
 import { lstat, mkdir, readdir, realpath, stat } from 'node:fs/promises'
 import { basename, dirname, join, resolve, sep } from 'node:path'
 
+/**
+ * Are these two directory entries the same file? Three answers, not two.
+ *
+ * `'unknown'` exists because a filesystem that reports no inode cannot answer
+ * the question at all, and an unanswered identity question is not a "different
+ * file" answer -- it is the one place where treating unknown as a pass would
+ * hand a caller's own input back to it as a destination. The caller refuses on
+ * `'unknown'` exactly as it refuses on `'same'`.
+ *
+ * Pure, and exported, because no real filesystem here reports a zero inode:
+ * the only way that branch can have a test that fails when it is removed is to
+ * ask this function directly.
+ */
+export function sameFile(left, right) {
+  if (left.ino === 0 || right.ino === 0) return 'unknown'
+  return left.dev === right.dev && left.ino === right.ino ? 'same' : 'different'
+}
+
 /** Raised when a destination cannot be written to safely. The caller exits 2. */
 export class DestinationError extends Error {
   constructor(message) {
@@ -113,15 +131,22 @@ export async function assertWritableDestination(destination, options = {}) {
     } catch {
       continue
     }
+    const verdict = sameFile(source, existing)
     // A filesystem that reports no inode cannot answer this question, and an
     // unanswered identity question is not a "different file" answer.
-    if (source.ino === 0 || existing.ino === 0) {
+    //
+    // No filesystem this runs on reports a zero inode, so removing the refusal
+    // below leaves the suite green and always will: there is no fixture to
+    // write. `sameFile` is a pure exported function for exactly that reason,
+    // and its `'unknown'` answer IS tested. What is untestable here is the
+    // branch, not the decision.
+    if (verdict === 'unknown') {
       throw new DestinationError(
         `${label} ${target} cannot be distinguished from an input: this filesystem reports `
         + 'no inode, so a hard link to a file being read cannot be ruled out.',
       )
     }
-    if (source.dev === existing.dev && source.ino === existing.ino) {
+    if (verdict === 'same') {
       throw new DestinationError(
         `${label} ${target} is the same file as an input (they share device ${existing.dev} `
         + `and inode ${existing.ino}, so a hard link does not make them different files). `
@@ -255,6 +280,14 @@ export async function prepareOutputRoot(destination, options = {}) {
 
   if (!settled.exists) {
     try {
+      // Not `{recursive: true}` -- but that is a statement of intent rather
+      // than a guard, and it is recorded as such: `resolveOutputRoot` has
+      // already refused a parent that does not exist, so adding the flag
+      // changes nothing this tool can be asked to do. Measured across a fresh
+      // destination, a missing parent, an existing empty directory and an
+      // existing non-empty one: same exit code, byte-identical stdout, stderr
+      // and directory tree. The refusal lives above; this is the spelling that
+      // matches it.
       await mkdir(settled.target)
     } catch (error) {
       throw new DestinationError(`${label} ${settled.target} could not be created: ${error.code ?? 'unknown error'}`)

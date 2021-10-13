@@ -45,7 +45,7 @@ import {
   resolveOutputRoot,
 } from './write-guard.mjs'
 
-export { DestinationError, assertWritableDestination, ensureDirectoryWithin, prepareOutputRoot, resolveOutputRoot } from './write-guard.mjs'
+export { DestinationError, sameFile, assertWritableDestination, ensureDirectoryWithin, prepareOutputRoot, resolveOutputRoot } from './write-guard.mjs'
 export { byCodeUnit, decodeUtf8, excerpt, hasForbiddenCharacter, isIdentifier, isRenderableText, parseFailureDetail, parseInstant, safeString } from './text.mjs'
 export { extractLinks, classifyTarget } from './links.mjs'
 export { flattenTokens } from './tokens.mjs'
@@ -193,6 +193,28 @@ export const RULE_OUTCOME = Object.freeze({
   'package-too-large': 'evidence',
 })
 
+/**
+ * The two table lookups, as functions, because a lookup that throws is a guard
+ * and a guard needs a test that fails when it is removed.
+ *
+ * Both are backstops for a rule id typed at a call site: `Collector.add`
+ * cannot invent a severity and `finish` cannot invent an outcome class, so
+ * each refuses rather than emitting a finding with `severity: undefined` or
+ * quietly leaving `incomplete` unset. Neither is reachable from a correct call
+ * site, which is exactly why they are exported and tested directly.
+ */
+export function severityFor(ruleId) {
+  const severity = RULE_SEVERITY[ruleId]
+  if (severity === undefined) throw new TypeError(`Unknown rule id "${excerpt(ruleId, 80)}"`)
+  return severity
+}
+
+export function outcomeFor(ruleId) {
+  const outcome = RULE_OUTCOME[ruleId]
+  if (outcome === undefined) throw new TypeError(`Rule "${excerpt(ruleId, 80)}" has no outcome class`)
+  return outcome
+}
+
 const ALLOWED_OPTIONS = Object.freeze(['root', 'plan', 'limits', 'now'])
 
 function isRecord(value) {
@@ -227,8 +249,7 @@ class Collector {
   }
 
   add(ruleId, { file, pointer = null, message, evidence = null, suggestion = null }) {
-    const severity = RULE_SEVERITY[ruleId]
-    if (severity === undefined) throw new TypeError(`Unknown rule id "${ruleId}"`)
+    const severity = severityFor(ruleId)
     const finding = {
       ruleId,
       severity,
@@ -972,9 +993,7 @@ function finish({ collector, summary, manifest, files, inputs, planFile }) {
   const findings = sortFindings(collector.findings)
   let incomplete = false
   for (const finding of findings) {
-    const outcome = RULE_OUTCOME[finding.ruleId]
-    if (outcome === undefined) throw new TypeError(`Rule "${finding.ruleId}" has no outcome class`)
-    if (outcome === 'evidence') incomplete = true
+    if (outcomeFor(finding.ruleId) === 'evidence') incomplete = true
     if (finding.severity === 'error') summary.errors += 1
     if (finding.severity === 'warning') summary.warnings += 1
   }

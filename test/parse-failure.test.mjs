@@ -36,6 +36,28 @@ describe('a parse failure never reproduces the document', () => {
     assert.equal(detail, "unexpected token 'a' at the start of the document")
   })
 
+  test('a quoted span that carries a newline, which a non-dotAll pattern misses', () => {
+    // The `s` flag on the quoting pattern is not decoration. V8's quoted run
+    // is taken verbatim from the document, so it can contain a line break, and
+    // `.` does not match one without the flag. Losing it does not leak here --
+    // the closing backstop catches that -- but it does turn a specific answer
+    // into the generic sentence, and nothing noticed.
+    const document = `{ "k": ${NEWLINE}${CREDENTIAL}${NEWLINE}${CREDENTIAL} }`
+    const detail = detailFor(document)
+    assert.ok(!detail.includes(CREDENTIAL), detail)
+    assert.ok(!detail.includes('"'), detail)
+    assert.equal(detail, "unexpected token 'A' at the start of the document",
+      'the quoting shape was not recognised, so the pattern is no longer dotAll')
+  })
+
+  test('and the same span quoted from the middle of the document', () => {
+    const document = `{ "alpha": "ok", "beta": ${NEWLINE}${CREDENTIAL} }`
+    const detail = detailFor(document)
+    assert.ok(!detail.includes(CREDENTIAL), detail)
+    assert.ok(!detail.includes('"'), detail)
+    assert.match(detail, /^unexpected token /)
+  })
+
   test('a document that is nothing but a credential', () => {
     const detail = detailFor(CREDENTIAL)
     assert.ok(!detail.includes(CREDENTIAL), detail)

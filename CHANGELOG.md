@@ -71,6 +71,48 @@ breaking change and is recorded here.
   whether the file exists is a different question from whether the caller was
   allowed to name it.
 
+### Added
+
+- `severityFor`, `outcomeFor` and `sameFile` are exported. Each was a refusal
+  buried inside a function no test could reach, and a refusal with no test that
+  fails when it is removed is a refusal that will quietly stop happening.
+  `sameFile` answers `same`, `different` or `unknown`, and `unknown` is the
+  answer a filesystem that reports no inode gives; the caller refuses on it
+  exactly as it refuses on `same`.
+- `resolveOutputRoot`: the effect-free half of `prepareOutputRoot`, which
+  answers where `--out` resolves without creating anything.
+
+### Measured and recorded rather than claimed
+
+A sweep of 197 mutations -- every severity flipped one step, every outcome
+class flipped, every `throw` in `src/` neutralised, every ordering call site
+given a collator -- left five standing after the tests above were written.
+Each is an equivalent mutant, and each is recorded here with what proves it
+rather than counted as coverage:
+
+- **The `ruleId` key of the finding sort.** No two of the 37 rule ids order
+  differently under collation: 666 pairs, zero disagreements. A test asserts
+  that, so the day a new rule id breaks it, the site needs a fixture and says
+  so.
+- **The order state evidence is read in.** Sorting `byName` decides only the
+  order of side effects that are all re-sorted or counted afterwards. Measured
+  against a collator over a plan with the states `Zoom`, `always`, `default`,
+  `disabled`, `Beta` and `beta2`, with no limit and with `maxFiles`,
+  `maxPackageBytes` and `maxStatesPerComponent` each set low enough to truncate:
+  byte-identical stdout, byte-identical stderr and byte-identical package.
+- **The control-character half of `isIdentifier`.** The shape it tests admits
+  only the 65 characters in the printable ASCII run `0x2D`-`0x7A`; every class
+  the control check catches lies below `0x20`, between `0x7F` and `0x9F`, or
+  above `0x2000`. A probe over the first 0x2200 code points asserts it.
+- **`mkdir` without `recursive`.** `resolveOutputRoot` refuses a parent that
+  does not exist before this runs. Measured over a fresh destination, a missing
+  parent, an existing empty directory and an existing non-empty one: same exit
+  code, byte-identical stdout, stderr and directory tree.
+- **The zero-inode refusal in the write guard.** No filesystem this runs on
+  reports a zero inode, so the branch has no fixture and never will. The
+  decision it acts on is `sameFile`, which is pure, exported and tested,
+  including its `unknown` answer.
+
 ## [0.1.0] - 2026-09-18
 
 First working release.
