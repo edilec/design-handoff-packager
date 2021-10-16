@@ -164,6 +164,18 @@ describe('assertWritableDestination, asked directly', () => {
     )
   })
 
+  test('refuses a destination it cannot inspect at all', async () => {
+    // `lstat` failing with anything but ENOENT is not "there is nothing
+    // there". A path segment longer than the filesystem allows is
+    // ENAMETOOLONG, and treating that as an empty slot would open a file the
+    // guard never looked at.
+    const base = await scratch()
+    const tooLong = resolve(base, 'x'.repeat(600))
+    await refused(() => assertWritableDestination(tooLong), /could not be inspected/)
+    await refused(() => resolveOutputRoot(tooLong), /could not be inspected/)
+    await refused(() => prepareOutputRoot(tooLong), /could not be inspected/)
+  })
+
   test('allows a destination inside the root it was given', async () => {
     const out = resolve(await scratch('dhp-out-'), 'package')
     await mkdir(out)
