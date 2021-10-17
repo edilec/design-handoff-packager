@@ -206,7 +206,7 @@ const CASES = [
  *
  * Deliberately not derived from `RULE_SEVERITY` or `RULE_OUTCOME`. A test that
  * reads the table it is checking asserts that the table agrees with itself: a
- * sweep of this suite found 20 of 74 coordinated table-and-document edits
+ * sweep of this suite found 29 of 74 coordinated table-and-document edits
  * surviving, including every `policy -> evidence` flip, because the expected
  * exit code moved with the table.
  *
