@@ -652,9 +652,15 @@ export async function inspectHandoff(options = {}) {
         })
       }
       if (flattened.rejected.length > 0) {
+        // A key no dotted citation could name is dropped out of the index this
+        // run compares citations against, so the comparison is INCOMPLETE --
+        // not clean. A key holding a dot is spellable by a citation and would
+        // otherwise be answered "no token document in this plan declares it"
+        // while its own finding quotes it two lines further down.
+        tokenSetComplete = false
         collector.add('token-name-unusable', {
           file: document_.source,
-          message: `${document_.source} declares ${flattened.rejected.length} group or token key(s) that no dotted citation could name; a key must be letters, digits, "-" or "_" and start with a letter or digit.`,
+          message: `${document_.source} declares ${flattened.rejectedCount} group or token key(s) that no dotted citation could name; a key must be letters, digits, "-" or "_" and start with a letter or digit.`,
           evidence: flattened.rejected.join(', '),
         })
       }
@@ -673,7 +679,11 @@ export async function inspectHandoff(options = {}) {
   }
 
   // --- components ------------------------------------------------------
-  const componentIds = new Set(plan.components.map((component) => component.id))
+  // Every id the plan DECLARES, not only the entries that survived validation.
+  // A component dropped for a missing contract is still declared, and saying
+  // "no component in this plan declares it" out of the survivors is an absence
+  // claim built on an index that dropped the evidence for it.
+  const componentIds = new Set(plan.declaredComponentIds)
   const componentIdCase = new Map()
   const manifestComponents = []
 
@@ -952,8 +962,15 @@ async function checkStates(context, plan, component, entry, summary, now) {
 
   entry.states.sort((left, right) => byCodeUnit(left.name, right.name))
 
+  // `declared` is every state name the plan writes down for this component,
+  // including the entries dropped for a refused evidence path, a duplicate
+  // name or a case collision. Each of those already carries its own error, and
+  // reporting the same state a second time as one the component "declares no
+  // evidence for" would be an absence claim about a state that is right there
+  // in the plan.
+  const declared = new Set(component.declaredStateNames)
   for (const name of plan.requiredStates) {
-    if (byName.has(name)) continue
+    if (byName.has(name) || declared.has(name)) continue
     summary.missingStates += 1
     collector.add('state-evidence-missing', {
       file: planFile,

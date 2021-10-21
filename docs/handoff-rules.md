@@ -29,7 +29,7 @@ together and an exit code cannot be edited at all.
 
 | Rule | Severity | Outcome | What it means |
 | --- | --- | --- | --- |
-| `cross-reference-unresolved` | error | policy | A component's `seeAlso` names a component this plan does not declare. |
+| `cross-reference-unresolved` | error | policy | A component's `seeAlso` names a component this plan does not declare. A component the plan declares and the schema check then dropped still counts as declared: it already carries its own error, and absence from the surviving set is not absence from the plan. |
 | `duplicate-component-id` | error | policy | Two components share an id. |
 | `duplicate-state` | error | policy | One component declares the same state name twice. |
 | `duplicate-token-document-id` | error | policy | Two token documents share an id exactly. They would be written to one path in the package, so one manifest entry would describe a file that is not the one beside it. This is a separate rule from `id-case-collision`: an exact duplicate is one file on every filesystem, not only a case-insensitive one. |
@@ -52,7 +52,7 @@ together and an exit code cannot be edited at all.
 | `source-not-utf8` | error | evidence | A file that is packaged is not valid UTF-8, so its content was not examined. |
 | `source-too-large` | error | evidence | A file is larger than `maxFileBytes`. It was not read. |
 | `source-unreadable` | error | evidence | A file exists and could not be read. This is never reported as absence. |
-| `state-evidence-missing` | error | policy | A required state has no entry, or its evidence file is not there. |
+| `state-evidence-missing` | error | policy | A required state has no entry, or its evidence file is not there. A state the component declares and the schema check then dropped -- for a refused evidence path, a duplicate name or a case collision -- is not "no entry": it already carries its own error. |
 | `state-evidence-stale` | error | policy | A required state's evidence was captured before the `evidenceMaxAgeDays` window. |
 | `state-evidence-undated` | error | policy | A window is declared and a required state's evidence carries no usable `capturedAt`, so its age cannot be decided. Undated evidence is not fresh evidence. |
 | `story-link-external` | info | policy | A component's story link leaves the root. It is recorded in the manifest and never fetched. |
@@ -61,7 +61,7 @@ together and an exit code cannot be edited at all.
 | `token-document-truncated` | error | evidence | A token document declares more names than `maxTokensPerDocument`. |
 | `token-name-unusable` | error | policy | A token group or key cannot be named by a dotted citation, so no plan could refer to it. |
 | `token-reference-unresolved` | error | policy | A component cites a token that no token document in this plan declares. |
-| `token-references-unchecked` | error | evidence | The token set could not be read in full, so citations were not resolved at all. Absence from a partial set is not evidence of absence. |
+| `token-references-unchecked` | error | evidence | The token set could not be read in full, so citations were not resolved at all. Absence from a partial set is not evidence of absence. A key `token-name-unusable` had to drop counts as not read in full, because the index the citations are compared against is missing it. |
 | `too-many-components` | error | evidence | The plan names more components than `maxComponents`. None were evaluated. |
 | `too-many-files` | error | evidence | The plan names more files than `maxFiles`. |
 | `too-many-states` | error | evidence | One component declares more states than `maxStatesPerComponent`. None of its states were evaluated. |
@@ -74,6 +74,20 @@ Findings are sorted by
 UTF-16 code unit. Locale-aware comparison depends on ICU data that differs
 between Node builds, so it is not used and its absence is pinned behaviourally
 rather than by a source scan.
+
+## Absence, and what may be compared against
+
+Three rules answer "the plan does not declare this": `cross-reference-unresolved`,
+`state-evidence-missing` and `token-reference-unresolved`. Each answers out of an
+index built while walking the plan, and an index built while dropping evidence
+cannot answer it. So:
+
+- a component or a state the plan declares counts as declared even when the
+  entry was dropped, because the drop already carries its own error and saying
+  it a second time as an absence would be a claim about something the plan
+  spells out;
+- and a token document that lost a name on its way into the index makes the
+  citation comparison `incomplete`, never clean.
 
 `location.pointer` is a JSON Pointer into the plan for a finding about the
 plan, and the documented field path `line:<n>` for a finding about a link

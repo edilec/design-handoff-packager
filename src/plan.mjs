@@ -103,12 +103,24 @@ function takePath(record, key, at, problems, required) {
   return value
 }
 
+/**
+ * Returns `{states, declaredNames}`.
+ *
+ * `states` holds the entries that validated; `declaredNames` holds every state
+ * name that validated, INCLUDING the entries that were then dropped for some
+ * other reason. The two are not the same set, and the difference is the whole
+ * point: a state whose evidence path was refused is still a state the plan
+ * declares, and reporting it afterwards as a required state the component
+ * "declares no evidence for" is a positive claim made out of an index that
+ * dropped the evidence for it.
+ */
 function takeStates(raw, at, problems) {
   if (!Array.isArray(raw)) {
     problems.push({ pointer: pointer(...at, 'states'), message: `"states" must be an array; found ${describeValue(raw)}` })
-    return []
+    return { states: [], declaredNames: [] }
   }
   const states = []
+  const declaredNames = []
   raw.forEach((entry, index) => {
     const where = [...at, 'states', String(index)]
     if (!isRecord(entry)) {
@@ -117,8 +129,10 @@ function takeStates(raw, at, problems) {
     }
     checkKeys(entry, STATE_KEYS, where, problems, 'a state')
     let name = null
-    if (isIdentifier(entry.name)) name = entry.name
-    else {
+    if (isIdentifier(entry.name)) {
+      name = entry.name
+      declaredNames.push(name)
+    } else {
       problems.push({
         pointer: pointer(...where, 'name'),
         message: `"name" must be an identifier of letters, digits, ".", "-" or "_" starting with a letter or digit; found ${describeValue(entry.name)}`,
@@ -140,7 +154,7 @@ function takeStates(raw, at, problems) {
     if (name === null || evidence === null) return
     states.push({ name, evidence, capturedAt, capturedAtText, pointer: pointer(...where) })
   })
-  return states
+  return { states, declaredNames }
 }
 
 function takeStringList(record, key, at, problems, { limitLength, validate, what }) {
@@ -257,6 +271,13 @@ export function validatePlan(document) {
   }
 
   const components = []
+  // Every component id the plan declares, whether or not the entry survived
+  // validation. `components` holds the survivors; a cross reference is checked
+  // against THIS set, because a component dropped for a missing contract is
+  // still a component the plan declares, and answering "no component in this
+  // plan declares it" out of the survivors is an absence claim built on an
+  // index that dropped the evidence.
+  const declaredComponentIds = []
   if (!Array.isArray(document.components)) {
     problems.push({ pointer: pointer('components'), message: `"components" must be an array; found ${describeValue(document.components)}` })
   } else {
@@ -273,6 +294,8 @@ export function validatePlan(document) {
           pointer: pointer(...where, 'id'),
           message: `"id" must be an identifier of letters, digits, ".", "-" or "_" starting with a letter or digit, because it becomes a directory name in the package; found ${describeValue(entry.id)}`,
         })
+      } else {
+        declaredComponentIds.push(id)
       }
       let title = null
       if (entry.title !== undefined) {
@@ -305,18 +328,22 @@ export function validatePlan(document) {
         validate: isIdentifier,
         what: 'a cross reference must be a component identifier',
       })
-      const states = takeStates(entry.states, where, problems)
+      const { states, declaredNames } = takeStates(entry.states, where, problems)
       if (entry.states === undefined) {
         problems.push({ pointer: pointer(...where, 'states'), message: '"states" is required' })
       }
 
       if (id === null || contract === null) return
-      components.push({ id, title, contract, notes, story, tokensUsed, seeAlso, states, pointer: pointer(...where) })
+      components.push({
+        id, title, contract, notes, story, tokensUsed, seeAlso, states,
+        declaredStateNames: declaredNames,
+        pointer: pointer(...where),
+      })
     })
   }
 
   return {
-    plan: { package: handoffPackage, requiredStates, evidenceMaxAgeDays, tokens, components },
+    plan: { package: handoffPackage, requiredStates, evidenceMaxAgeDays, tokens, components, declaredComponentIds },
     problems,
   }
 }

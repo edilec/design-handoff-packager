@@ -296,3 +296,115 @@ describe('two token documents declared under one id', () => {
     assert.notEqual(report.status, 'pass')
   })
 })
+
+/**
+ * Unknown is never a pass -- on BOTH sides of a comparison.
+ *
+ * Three rules answer "the plan does not declare this": a cross reference, a
+ * required state, and a token citation. Each answers out of an index built
+ * while walking the plan, and each index used to be built from the entries
+ * that SURVIVED validation. Anything the plan declared and validation dropped
+ * was then reported as something the plan never said -- a positive claim
+ * assembled out of evidence the same report quotes a few lines further down.
+ *
+ * Every case below drives the whole tool and asserts the report that comes
+ * out. The run still fails in each of them; what it must not do is say the
+ * plan is silent about something the plan spells out.
+ */
+describe('an index that dropped evidence makes a comparison incomplete, not clean', () => {
+  test('a cross reference to a component the plan declares and validation dropped', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [
+        // Declared, and dropped: "contract" is required.
+        { id: 'icon-button', tokensUsed: [], seeAlso: [], states: base.components[0].states },
+        { ...base.components[0], seeAlso: ['icon-button'] },
+      ],
+    })))
+    const report = await auditHandoff({ root })
+    assert.ok(ruleIds(report).includes('plan-schema-invalid'), ruleIds(report).join(', '))
+    assert.ok(!ruleIds(report).includes('cross-reference-unresolved'),
+      'the plan declares "icon-button" two lines above the reference; it is not undeclared')
+    assert.notEqual(report.status, 'pass')
+  })
+
+  test('and a cross reference to a component nothing declares is still unresolved', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], seeAlso: ['split-button'] }],
+    })))
+    const report = await auditHandoff({ root })
+    assert.ok(ruleIds(report).includes('cross-reference-unresolved'),
+      'the fix must not stop the rule firing on a reference that really names nothing')
+  })
+
+  test('a required state the plan declares with a path that was refused', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{
+        ...base.components[0],
+        states: [base.components[0].states[0], { name: 'disabled', evidence: '../outside.json' }],
+      }],
+    })))
+    const report = await auditHandoff({ root })
+    assert.ok(ruleIds(report).includes('plan-schema-invalid'), ruleIds(report).join(', '))
+    assert.ok(!ruleIds(report).includes('state-evidence-missing'),
+      'the component declares a "disabled" state; its evidence path was refused, which is a different sentence')
+    assert.equal(report.summary.missingStates, 0)
+    assert.notEqual(report.status, 'pass')
+  })
+
+  test('and a required state with no entry at all is still missing', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], states: [base.components[0].states[0]] }],
+    })))
+    const report = await auditHandoff({ root })
+    assert.ok(ruleIds(report).includes('state-evidence-missing'),
+      'the fix must not stop the rule firing on a state the plan never mentions')
+    assert.equal(report.summary.missingStates, 1)
+  })
+
+  test('a citation naming a token key the index had to drop', async () => {
+    // `color.brand.primary` IS in the document, as the single key
+    // "brand.primary" under "color". No dotted citation can name that key, so
+    // it is dropped -- and the same report used to answer, positively, that no
+    // token document declares it.
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], tokensUsed: ['color.brand.primary'] }],
+    }), {
+      'tokens/color.json': json({ color: { 'brand.primary': { $value: '#123456' }, other: { $value: '#000000' } } }),
+    }))
+    const report = await auditHandoff({ root })
+    assert.ok(ruleIds(report).includes('token-name-unusable'), ruleIds(report).join(', '))
+    assert.ok(!ruleIds(report).includes('token-reference-unresolved'),
+      'the key is in the document and the finding above quotes it; it is unread, not absent')
+    assert.ok(ruleIds(report).includes('token-references-unchecked'),
+      'an index that dropped a name cannot answer whether a citation resolves')
+    assert.equal(report.status, 'incomplete', 'unknown is never a pass and never an absence')
+  })
+
+  test('through the command line, that citation exits 2 rather than 1', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], tokensUsed: ['color.brand.primary'] }],
+    }), {
+      'tokens/color.json': json({ color: { 'brand.primary': { $value: '#123456' } } }),
+    }))
+    const result = runCli(['--root', root, '--json'])
+    assert.equal(result.code, 2, result.stderr)
+    assert.equal(reportFrom(result).status, 'incomplete')
+  })
+
+  test('and a citation nothing declares is still unresolved', async () => {
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], tokensUsed: ['color.nope'] }],
+    })))
+    const report = await auditHandoff({ root })
+    assert.ok(ruleIds(report).includes('token-reference-unresolved'),
+      'the fix must not stop the rule firing against a complete index')
+    assert.equal(report.status, 'fail')
+  })
+})
