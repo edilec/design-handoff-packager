@@ -119,7 +119,9 @@ describe('an identifier that would render as nothing is refused, not sanitised',
   })
 
   test('a token key that no dotted citation could name is reported', async () => {
-    const root = await writeTree(await scratch(), treeFor(planFor(), {
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...planFor().components[0], tokensUsed: [] }],
+    }), {
       'tokens/color.json': json({
         color: { brand: { primary: { $value: '#1' } }, 'has.a.dot': { $value: '#2' } },
       }),
@@ -127,7 +129,7 @@ describe('an identifier that would render as nothing is refused, not sanitised',
     const report = (await inspectHandoff({ root })).report
     const finding = report.findings.find((entry) => entry.ruleId === 'token-name-unusable')
     assert.ok(finding, 'a key that cannot be cited must be reported, not silently renamed')
-    assert.equal(report.status, 'fail')
+    assert.equal(report.status, 'fail', 'nothing cites a token here, so the only finding is the unusable key')
   })
 })
 

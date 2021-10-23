@@ -115,9 +115,13 @@ const CASES = [
   { rule: 'story-link-unresolved',
  expect: 'fail', tree: () => treeFor(withComponent({ story: 'stories/button.md' })) },
   {
+    // `tokensUsed` is emptied on purpose, for the same reason as the duplicate
+    // token document above: a key the index had to drop also stops the token
+    // set being complete, which raises an `evidence` finding and would move
+    // the exit code to 2. This case is here to pin THIS rule's exit code.
     rule: 'token-name-unusable',
     expect: 'fail',
-    tree: () => treeFor(planFor(), {
+    tree: () => treeFor(planFor({ components: [{ ...base.components[0], tokensUsed: [] }] }), {
       'tokens/color.json': json({ color: { brand: { primary: { $value: '#1' } }, 'a.b': { $value: '#2' } } }),
     }),
   },
