@@ -11,8 +11,8 @@ import { after, describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
-import { DEFAULT_LIMITS, auditHandoff, validateLimits } from '../src/index.mjs'
-import { cleanup, scratch, treeFor, writeTree } from './support.mjs'
+import { DEFAULT_LIMITS, auditHandoff, flattenTokens, validateLimits } from '../src/index.mjs'
+import { cleanup, json, planFor, scratch, treeFor, writeTree } from './support.mjs'
 
 after(cleanup)
 
@@ -75,5 +75,27 @@ describe('options', () => {
   test('a missing root is refused', async () => {
     await assert.rejects(() => auditHandoff({}), TypeError)
     await assert.rejects(() => auditHandoff({ root: '   ' }), TypeError)
+  })
+})
+
+describe('a bounded evidence sample does not become the count', () => {
+  test('a document with more uncitable keys than the sample holds reports all of them', () => {
+    const document = { color: {} }
+    for (let index = 0; index < 15; index += 1) document.color[`bad key ${index}`] = { $value: '#000000' }
+    const flattened = flattenTokens(document, DEFAULT_LIMITS)
+    assert.equal(flattened.rejectedCount, 15, 'the count is what was found, not what the sample holds')
+    assert.equal(flattened.rejected.length, 10, 'the sample stays bounded: it reaches the report')
+  })
+
+  test('and the finding says the number it found', async () => {
+    const document = { color: {} }
+    for (let index = 0; index < 15; index += 1) document.color[`bad key ${index}`] = { $value: '#000000' }
+    const base = planFor()
+    const root = await writeTree(await scratch(), treeFor(planFor({
+      components: [{ ...base.components[0], tokensUsed: [] }],
+    }), { 'tokens/color.json': json(document) }))
+    const report = await auditHandoff({ root })
+    const finding = report.findings.find((entry) => entry.ruleId === 'token-name-unusable')
+    assert.match(finding.message, /declares 15 group or token key\(s\)/)
   })
 })

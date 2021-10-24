@@ -34,7 +34,12 @@ function isLeaf(node) {
 /**
  * Collect every token name declared by a document.
  *
- * Returns `{names, truncated, tooDeep, rejected}`. `truncated` and `tooDeep` are the two
+ * Returns `{names, truncated, tooDeep, rejected, rejectedCount}`. `rejected` is a
+ * bounded sample for the evidence field; `rejectedCount` is how many there
+ * really were, because a count taken from a bounded sample reports the bound
+ * rather than the number and a report must not say fewer than it found.
+ *
+ * `truncated` and `tooDeep` are the two
  * ways this can stop early, and neither is ever a pass: the caller turns each
  * into an `incomplete` report naming the limit it hit. A token set that was
  * only partly read cannot answer "is this citation resolved?" -- absence of a
@@ -48,6 +53,7 @@ export function flattenTokens(document, limits) {
   const { maxTokensPerDocument, maxTokenDepth } = limits
   const names = []
   const rejected = []
+  let rejectedCount = 0
   let truncated = false
   let tooDeep = false
 
@@ -70,6 +76,7 @@ export function flattenTokens(document, limits) {
     for (const key of Object.keys(node).sort(byCodeUnit)) {
       if (key.startsWith('$')) continue
       if (!SEGMENT.test(key)) {
+        rejectedCount += 1
         if (rejected.length < 10) rejected.push(excerpt([...path, key].join('.'), 80))
         continue
       }
@@ -81,5 +88,5 @@ export function flattenTokens(document, limits) {
   walk(document, [], 1)
   names.sort(byCodeUnit)
   rejected.sort(byCodeUnit)
-  return { names, truncated, tooDeep, rejected }
+  return { names, truncated, tooDeep, rejected, rejectedCount }
 }
