@@ -8,7 +8,7 @@
 import { describe, test } from 'node:test'
 import assert from 'node:assert/strict'
 
-import { validatePlan, validateRelativePath } from '../src/index.mjs'
+import { hasForbiddenCharacter, validatePlan, validateRelativePath } from '../src/index.mjs'
 
 function planWith(overrides) {
   return {
@@ -125,6 +125,27 @@ describe('validateRelativePath', () => {
   test('a segment that renders as nothing is refused', () => {
     assert.match(validateRelativePath('a/' + String.fromCharCode(0x200e) + '/b.json'), /invisible/)
   })
+
+  /**
+   * The same refusal, on characters the control-character check does NOT
+   * catch. U+200E above is in both classes, so that case alone pins the two
+   * refusals together and stops telling them apart the moment either message
+   * is reworded. A space, a no-break space and an ideographic space are
+   * ordinary printable characters a path may contain -- just not as the whole
+   * of a segment, which then names a directory whose name reads as nothing.
+   */
+  for (const [what, segment] of [
+    ['a space', ' '],
+    ['a no-break space', String.fromCharCode(0x00a0)],
+    ['an ideographic space', String.fromCharCode(0x3000)],
+  ]) {
+    test('a segment that is only ' + what + ' is refused by renderability alone', () => {
+      assert.match(validateRelativePath('a/' + segment + '/b.json'), /invisible/)
+      assert.match(validateRelativePath(segment), /invisible/)
+      assert.equal(hasForbiddenCharacter(segment), false,
+        'if the control-character class caught this, the case would not pin the renderability check')
+    })
+  }
 
   test('an ordinary relative path is accepted', () => {
     for (const value of ['a.json', 'a/b.json', 'a/b/c-d_e.json', 'a b.json']) {
