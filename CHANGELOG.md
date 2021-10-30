@@ -9,6 +9,38 @@ breaking change and is recorded here.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Unknown was reported as an absence, on the index side of three
+  comparisons.** `cross-reference-unresolved`, `state-evidence-missing` and
+  `token-reference-unresolved` each answer "the plan does not declare this",
+  and each answered it out of an index built from the entries that SURVIVED
+  validation. Anything the plan declared and validation dropped was then
+  reported as something the plan never said:
+
+  - a `seeAlso` naming a component whose own entry was dropped for a missing
+    `contract` reported `component "button" refers to "icon-button", which no
+    component in this plan declares` -- two lines under the finding that says
+    `icon-button` is missing its contract;
+  - a required state declared with an evidence path the schema refused reported
+    `declares no evidence for the required state "hover"`;
+  - and a token document holding the single key `"brand.primary"` under
+    `"color"` -- a key no dotted citation can name, so it is dropped from the
+    index -- reported `cites token "color.brand.primary", which no token
+    document in this plan declares`, while the `token-name-unusable` finding
+    beside it quoted that exact name as evidence.
+
+  The first two now compare against every id and every state name the plan
+  declares, dropped entries included; each drop already carries its own error,
+  so nothing stops failing. The third makes the token set incomplete, exactly
+  as a truncated or too-deep document already did, so the run reports
+  `token-references-unchecked` and exits 2 rather than answering a question its
+  index could not answer. Evidence dropped while building an index makes the
+  comparison incomplete; it does not make it clean.
+- `token-name-unusable` reported the size of its bounded evidence sample rather
+  than the number of keys it found: fifteen uncitable keys were announced as
+  ten. The sample stays bounded at ten; the count is now the count.
+
 ### Added
 
 - `duplicate-token-document-id` (error, policy): two token documents declared
