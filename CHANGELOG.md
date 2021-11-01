@@ -90,14 +90,30 @@ breaking change and is recorded here.
   proves its fixture is unreadable before relying on it.
 - The severity and outcome tables were pinned by a test that read them. Sweeping
   every rule -- flipping its severity one step, and its outcome class, in the
-  source table and in `docs/handoff-rules.md` together -- left 29 of 74 such
-  edits with the suite green, including every `policy -> evidence` flip, because
-  the expected exit code moved with the table. (A commit message from this round
-  says 20; that figure came from a truncated log rather than from the summary,
-  and 29 is the measured number, re-run against the pre-fix tree.) Each case now carries a
-  hand-written expectation of the observed output (`fail`, `incomplete` or
-  `clean`) with the error and warning counts, and a separate test says which
-  case to revisit when a table is changed deliberately. All 74 are now killed.
+  source table and in `docs/handoff-rules.md` together -- left **32 of 74** such
+  edits with the suite green, because the expected exit code moved with the
+  table. Each case now carries a hand-written expectation of the observed output
+  (`fail`, `incomplete` or `clean`) with the error and warning counts, and a
+  separate test says which case to revisit when a table is changed deliberately.
+  All 74 are now killed, including a coordinated edit that moves the test's own
+  expectation along with the two tables.
+
+  The survivor count has been wrong twice in this round, so here is how to
+  reproduce it and what it is made of. Apply the 74 edits to the tree at
+  `31f858c^`, one at a time, and run `node --test` (275 tests there); 32 runs
+  come back green:
+
+  | Survivors | What they were |
+  | ---: | --- |
+  | 18 | `error -> warning` on each of the 18 `evidence` rules: the exit code is 2 either way and the counts were not asserted |
+  | 1 | `error -> warning` on `no-components` |
+  | 4 | `policy -> evidence` on `duplicate-component-id`, `duplicate-state`, `duplicate-token-document-id`, `id-case-collision` |
+  | 9 | `evidence -> policy` on the limit and decoding rules |
+
+  A commit message from this round says 20, and an earlier correction says 29
+  "including every `policy -> evidence` flip". Both are wrong: 20 came from a
+  truncated log, and only 4 of the 19 `policy -> evidence` flips survived --
+  the other 15 were killed by exit-code assertions elsewhere in the suite.
 - A `--plan` that resolves outside the root and does not exist produced a report
   whose `location.file` climbed out of the root with one `../` per directory the
   root sits under, so the same configuration produced different report bytes on
@@ -118,11 +134,12 @@ breaking change and is recorded here.
 
 ### Measured and recorded rather than claimed
 
-A sweep of 199 mutations -- every severity flipped one step, every outcome
-class flipped, every `throw` in `src/` neutralised, every ordering call site
-given a collator -- left five standing after the tests above were written.
-Each is an equivalent mutant, and each is recorded here with what proves it
-rather than counted as coverage:
+An independently enumerated sweep of 190 mutations -- every severity flipped
+one step, every outcome class flipped, the `incomplete` derivation deleted,
+every rule suppressed at the finding funnel, every `throw` in `src/`
+neutralised, every ordering call site given a collator, and every hand-written
+refusal removed -- leaves five standing. Each is an equivalent mutant, and each
+is recorded here with what proves it rather than counted as coverage:
 
 - **The `ruleId` key of the finding sort.** No two of the 37 rule ids order
   differently under collation: 666 pairs, zero disagreements. A test asserts
@@ -137,11 +154,18 @@ rather than counted as coverage:
 - **The control-character half of `isIdentifier`.** The shape it tests admits
   only the 65 characters in the printable ASCII run `0x2D`-`0x7A`; every class
   the control check catches lies below `0x20`, between `0x7F` and `0x9F`, or
-  above `0x2000`. A probe over the first 0x2200 code points asserts it.
-- **`mkdir` without `recursive`.** `resolveOutputRoot` refuses a parent that
-  does not exist before this runs. Measured over a fresh destination, a missing
-  parent, an existing empty directory and an existing non-empty one: same exit
-  code, byte-identical stdout, stderr and directory tree.
+  above `0x2000`. A probe over the first 0x2200 code points asserts it, and a
+  wider probe over every code point to `0x10FFFF`, in four positions each,
+  found no string the two spellings disagree about.
+- **`mkdir` without `recursive`, at both sites.** In `prepareOutputRoot`,
+  `resolveOutputRoot` has already refused a parent that does not exist. In
+  `ensureDirectoryWithin`, the loop `lstat`s and creates one segment at a time,
+  so every parent exists by the time the next segment is reached and the
+  symlink refusal is what does the guarding either way. Measured over a fresh
+  destination, a missing parent, an existing empty directory, an existing
+  non-empty one, a linked directory inside `--out`, a file where a package
+  directory must go and a partly pre-created tree: same exit code,
+  byte-identical stdout, stderr and directory listing.
 - **The zero-inode refusal in the write guard.** No filesystem this runs on
   reports a zero inode, so the branch has no fixture and never will. The
   decision it acts on is `sameFile`, which is pure, exported and tested,
