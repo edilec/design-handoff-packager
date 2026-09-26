@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "1",
+  "package": {
+    "name": "edilec-ui",
+    "version": "3.2.0"
+  },
+  "requiredStates": [
+    "default",
+    "hover",
+    "focus-visible",
+    "disabled"
+  ],
+  "tokens": [
+    {
+      "id": "color",
+      "source": "tokens/color.tokens.json"
+    },
+    {
+      "id": "space",
+      "source": "tokens/space.tokens.json"
+    }
+  ],
+  "components": [
+    {
+      "id": "button",
+      "title": "Button",
+      "contract": "contracts/button.json",
+      "notes": "notes/button.md",
+      "story": "https://storybook.example.invalid/?path=/story/button--primary",
+      "tokensUsed": [
+        "color.brand.primary",
+        "color.brand.on-primary",
+        "space.inset.md",
+        "color.brand.tertiary"
+      ],
+      "seeAlso": [
+        "icon-button",
+        "split-button"
+      ],
+      "states": [
+        {
+          "name": "default",
+          "evidence": "evidence/button/default.json",
+          "capturedAt": "2026-08-14T10:00:00Z"
+        },
+        {
+          "name": "hover",
+          "evidence": "evidence/button/hover.json",
+          "capturedAt": "2026-08-14T10:01:00Z"
+        },
+        {
+          "name": "focus-visible",
+          "evidence": "evidence/button/focus-visible.json",
+          "capturedAt": "2026-08-14T10:02:00Z"
+        }
+      ]
+    },
+    {
+      "id": "icon-button",
+      "title": "Icon button",
+      "contract": "contracts/icon-button.json",
+      "notes": "notes/icon-button.md",
+      "story": "stories/icon-button-stories.md",
+      "tokensUsed": [
+        "color.brand.primary",
+        "space.inset.sm"
+      ],
+      "seeAlso": [
+        "button"
+      ],
+      "states": [
+        {
+          "name": "default",
+          "evidence": "evidence/icon-button/default.json"
+        },
+        {
+          "name": "hover",
+          "evidence": "evidence/icon-button/hover.json"
+        },
+        {
+          "name": "focus-visible",
+          "evidence": "evidence/icon-button/focus-visible.json"
+        },
+        {
+          "name": "disabled",
+          "evidence": "evidence/icon-button/disabled.json"
+        }
+      ]
+    }
+  ]
+}

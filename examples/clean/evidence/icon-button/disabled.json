@@ -1,0 +1,6 @@
+{
+  "state": "disabled",
+  "viewport": { "width": 1280, "height": 800 },
+  "checks": ["contrast", "accessible-name"],
+  "notes": "captured from the local story build"
+}

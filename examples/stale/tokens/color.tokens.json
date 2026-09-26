@@ -1,0 +1,11 @@
+{
+  "color": {
+    "brand": {
+      "primary": { "$value": "#1f4fd8", "$type": "color" },
+      "on-primary": { "$value": "#ffffff", "$type": "color" }
+    },
+    "surface": {
+      "raised": { "$value": "#ffffff", "$type": "color" }
+    }
+  }
+}
